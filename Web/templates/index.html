@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ddG Predictor</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+        integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <style>
+        body {
+            font-family: "Times New Roman", sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #333333;
+        }
+        .indent-text {
+            padding-left: 30px;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+        }
+        .result-box {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e8f5e9;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 18px;
+        }
+        .img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container" v-loading="isLoading">
+        <div class="header">
+            <h1>Prediction of Protein Stability Changes</h1>
+            <template>
+                <el-button type="text" @click="open">Contact Us</el-button>
+            </template>
+        </div>
+
+        <form @submit.prevent="submitForm">
+            <div class="content">
+                <div>
+                    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+                        <button class="navbar-toggler" type="button" data-toggle="collapse"
+                            data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
+                            aria-expanded="false" aria-label="Toggle navigation">
+                            <span class="navbar-toggler-icon"></span>
+                        </button>
+                        <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                            <ul class="navbar-nav mr-auto navbar-right">
+                                <li class="nav-item active">
+                                    <a class="nav-link" href="">Home <span class="sr-only">(current)</span></a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="https://github.com/remnantsaint/ddg-predictor"
+                                        target="_blank">Download</a>
+                                </li>
+                            </ul>
+                        </div>
+                    </nav>
+                </div>
+
+                <div class="form-group" style="margin-top: 15px;">
+                    <div class="form-control" style="height:auto; min-height:50px;">
+                        Enter a protein sequence and specify a single-point mutation to predict the change in folding stability (ddG).
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Protein Sequence</label>
+                    <el-input type="textarea" v-model="sequence" :rows="4"
+                        placeholder="e.g. MKLRIATIAGLVVLGSGFAVAQTDVIAQRKAILKQM..."></el-input>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group col-md-4">
+                        <label>Position</label>
+                        <el-input v-model="pos" placeholder="e.g. 94"></el-input>
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label>Wildtype AA</label>
+                        <el-input v-model="wt" placeholder="e.g. E" maxlength="1"></el-input>
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label>Mutant AA</label>
+                        <el-input v-model="mt" placeholder="e.g. H" maxlength="1"></el-input>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <el-button type="primary" :disabled="!canSubmit" native-type="submit">
+                        Predict ddG
+                    </el-button>
+                </div>
+
+                <div v-if="resultReady" class="result-box">
+                    {% raw %}
+                    <strong>{{ mutation }}</strong><br>
+                    Predicted ddG: <strong>{{ ddg }} kcal/mol</strong>
+                    {% endraw %}
+                </div>
+
+                <div v-if="errorMsg" class="alert alert-danger" style="margin-top: 15px;">
+                    {% raw %}{{ errorMsg }}{% endraw %}
+                </div>
+            </div>
+        </form>
+
+        <div style="margin-top: 30px;">
+            <h3>Notes</h3>
+            <p class="indent-text">- The sequence must use standard single-letter amino acid codes (20 common residues).</p>
+            <p class="indent-text">- Position is 1-based (the first residue is position 1).</p>
+            <p class="indent-text">- The wildtype amino acid must match the residue at the given position in the sequence, otherwise an error will be returned.</p>
+            <p class="indent-text">- Prediction may take 10-20 seconds depending on sequence length and server load.</p>
+            <p class="indent-text">- Positive ddG indicates destabilization; negative ddG indicates stabilization.</p>
+            <p class="indent-text">- If you encounter any issues or have questions, feel free to contact us via the email provided in the top-right corner.</p>
+        </div>
+
+        <div class="footer">
+            <img class="img" src="{{ url_for('static', filename='figure.jpg') }}" alt="Model Architecture">
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                isLoading: false,
+                sequence: '',
+                pos: '',
+                wt: '',
+                mt: '',
+                ddg: null,
+                mutation: '',
+                resultReady: false,
+                errorMsg: '',
+            },
+            computed: {
+                canSubmit: function () {
+                    return this.sequence && this.pos && this.wt && this.mt && !this.isLoading;
+                },
+            },
+            methods: {
+                open: function () {
+                    this.$msgbox({
+                        title: 'Email',
+                        message: 'remsait647@nefu.edu.cn',
+                        showCancelButton: true,
+                        confirmButtonText: 'Copy',
+                        cancelButtonText: 'Close',
+                        beforeClose: function (action, instance, done) {
+                            if (action === 'confirm') {
+                                var textarea = document.createElement("textarea");
+                                textarea.value = 'remsait647@nefu.edu.cn';
+                                document.body.appendChild(textarea);
+                                textarea.select();
+                                document.execCommand("copy");
+                                document.body.removeChild(textarea);
+                            }
+                            done();
+                        },
+                    });
+                },
+                submitForm: function () {
+                    if (this.isLoading) return;
+                    this.isLoading = true;
+                    this.resultReady = false;
+                    this.errorMsg = '';
+                    var self = this;
+                    fetch('/predict', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            sequence: self.sequence,
+                            pos: self.pos,
+                            wt: self.wt,
+                            mt: self.mt,
+                        }),
+                    })
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            self.isLoading = false;
+                            if (data.error) {
+                                self.errorMsg = data.error;
+                                return;
+                            }
+                            self.ddg = data.ddg;
+                            self.mutation = data.mutation;
+                            self.resultReady = true;
+                        })
+                        .catch(function (e) {
+                            self.isLoading = false;
+                            self.errorMsg = 'Request failed: ' + e.message;
+                        });
+                },
+            },
+        });
+    </script>
+</body>
+</html>
